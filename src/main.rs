@@ -16,7 +16,7 @@ fn collect_aiff_files(start_folder: &Path) -> Vec<PathBuf> {
                 paths.push(file_path.into());
             }
         } else if metadata.is_dir() {
-            paths.append(&mut collect_all_aiff_files_recursively(&e.path()));
+            paths.append(&mut collect_aiff_files(&e.path()));
         } else {
             println!("Invalid entry - skip");
         }
