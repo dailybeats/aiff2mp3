@@ -1,4 +1,4 @@
-use std::fs::read_dir;
+use std::fs::{self, read_dir};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::exit;
@@ -6,22 +6,82 @@ use std::process::exit;
 use aifc::Sample;
 use mp3lame_encoder::{Builder, FlushNoGap, Id3Tag, InterleavedPcm};
 
-fn collect_aiff_files(start_folder: &Path) -> Vec<PathBuf> {
+#[derive(Default)]
+struct MusicFolder {
+    name: String,
+    path: PathBuf,
+    tag: Option<Mp3Tag>,
+    files: Vec<PathBuf>,
+}
+
+#[derive(Debug, Default)]
+struct Mp3Tag {
+    artist: Option<String>,
+    album: Option<String>,
+    year: Option<String>,
+}
+
+fn parse_metadata(file: &str) -> Mp3Tag {
+    let mp3_tag_content = std::fs::read(file).expect("Could not get Mp3Tag content");
+    let mp3_tag_content =
+        String::from_utf8(mp3_tag_content).expect("Could not convert Mp3Tag data to String");
+
+    let mut metadata = Mp3Tag::default();
+
+    for line in mp3_tag_content.lines() {
+        let (key, value) = match line.split_once(':') {
+            Some((k, v)) => (k.trim(), v.trim()),
+            None => continue, // skip malformed lines
+        };
+
+        match key {
+            "artist" => metadata.artist = Some(value.to_string()),
+            "album" => metadata.album = Some(value.to_string()),
+            "year" => metadata.year = Some(value.to_string()),
+            _ => {} // ignore unknown keys
+        }
+    }
+
+    metadata
+}
+
+fn collect_aiff_files(start_folder: &Path) -> Vec<MusicFolder> {
     let mut paths = vec![];
 
-    for entry in read_dir(start_folder).expect("Could not read_dir") {
-        let e = entry.expect("Could not get the entry from read_dir");
-        let metadata = e.metadata().expect("Could not get metadata from entry");
+    let mut current_folder = MusicFolder::default();
+    current_folder.name = start_folder
+        .file_name()
+        .expect("Could not get file_name")
+        .to_str()
+        .unwrap()
+        .into();
+    current_folder.path = start_folder.to_path_buf();
+
+    for dir in read_dir(start_folder).expect("Could not read_dir") {
+        let dir = dir.expect("Could not get the dir from read_dir");
+        let metadata = dir.metadata().expect("Could not get metadata from entry");
+
         if metadata.is_file() {
-            let file_path = e.path();
-            if file_path.to_str().unwrap().ends_with(".aiff") {
-                paths.push(file_path.into());
+            let file_path = dir.path();
+            let file_name = file_path.file_name().expect("Could not get the file_name");
+            let file_path = file_path
+                .to_str()
+                .expect("Could not get the file_path as str");
+
+            if file_path.ends_with(".aiff") {
+                current_folder.files.push(file_path.into());
+            } else if file_name == "mp3tag.txt" {
+                current_folder.tag = Some(parse_metadata(file_path));
             }
         } else if metadata.is_dir() {
-            paths.append(&mut collect_aiff_files(&e.path()));
+            paths.append(&mut collect_aiff_files(&dir.path()));
         } else {
             println!("Invalid entry - skip");
         }
+    }
+
+    if !current_folder.files.is_empty() {
+        paths.push(current_folder);
     }
 
     return paths;
@@ -51,13 +111,25 @@ fn get_samples(path: &Path) -> Vec<u16> {
     data
 }
 
-fn create_mp3_file(path: &Path, samples: Vec<u16>) {
+fn create_mp3_file(path: &Path, tag: &Option<Mp3Tag>, samples: Vec<u16>) {
+    let file_name = path.file_name().expect("Invalid file_name");
+    let mut artist = String::new();
+    let mut album = String::new();
+    let mut year = String::new();
+
+    if let Some(t) = tag {
+        artist = t.artist.clone().or(Some("".into())).unwrap();
+        album = t.album.clone().or(Some("".into())).unwrap().to_string();
+        year = t.year.clone().or(Some("".into())).unwrap().to_string();
+    }
+    println!("  - artist: {}, album: {}, year: {}", artist, album, year);
+
     let id3tag = Id3Tag {
-        title: path.file_name().expect("Invalid file_name").as_bytes(),
-        artist: &[],
-        album: b"My album",
+        title: file_name.as_bytes(),
+        artist: artist.as_bytes(),
+        album: album.as_bytes(),
         album_art: &[],
-        year: b"Current year",
+        year: year.as_bytes(),
         comment: b"Created by aiff2mp3",
     };
 
@@ -133,12 +205,21 @@ fn main() {
         path.to_str().expect("Could not convert path to str")
     );
 
-    let aiff_files = collect_aiff_files(path);
-    for file in aiff_files {
-        println!("Parsing {:?}", file);
-        println!(" - Getting samples");
-        let samples = get_samples(&file);
-        println!(" - Creating MP3 file");
-        create_mp3_file(&file, samples);
+    let music_folders = collect_aiff_files(path);
+    for folder in music_folders {
+        println!("Parsing folder {} ({:?})", folder.name, folder.path);
+
+        let mut mp3_folder = folder.path.to_path_buf();
+        mp3_folder.push("aiff2mp3");
+        println!("Creating aiff2mp3 folder: {:?}", mp3_folder);
+        fs::create_dir_all(mp3_folder).expect("Could not create aiff2mp3 foldder");
+
+        for file in folder.files {
+            println!(" - Parsing {:?}", file);
+            println!(" - Getting samples");
+            let samples = get_samples(&file);
+            println!(" - Creating MP3 file");
+            create_mp3_file(&file, &folder.tag, samples);
+        }
     }
 }
