@@ -171,7 +171,12 @@ fn create_mp3_file(path: &Path, tag: &Option<Mp3Tag>, samples: Vec<u16>) {
         mp3_out_buffer.set_len(mp3_out_buffer.len().wrapping_add(encoded_size));
     }
 
-    let mp3_file = path.with_extension("mp3");
+    let mut mp3_file = path.parent().expect("Could not get parent").to_path_buf();
+    mp3_file.push("aiff2mp3");
+    mp3_file.push(format!(
+        "{}.mp3",
+        path.file_prefix().unwrap().to_str().unwrap()
+    ));
     println!("  - Write MP3 file to {:?}", mp3_file);
     std::fs::write(mp3_file, mp3_out_buffer).expect("Failed to write mp3 file");
 }
