@@ -84,7 +84,7 @@ fn get_samples(path: &Path) -> Vec<u16> {
 }
 
 fn create_mp3_file(path: &Path, tag: &Option<Mp3Tag>, samples: Vec<u16>) {
-    let file_name = path.file_name().expect("Invalid file_name");
+    let file_name = path.file_stem().expect("Invalid file_name");
     let mut artist = String::new();
     let mut album = String::new();
     let mut year = String::new();
