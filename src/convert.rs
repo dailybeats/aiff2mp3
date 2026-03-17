@@ -5,7 +5,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 use aifc::Sample;
-use mp3lame_encoder::{Builder, FlushNoGap, Id3Tag, InterleavedPcm};
+use mp3lame_encoder::{Builder, FlushNoGap, Id3Tag, InterleavedPcm, MAX_ALBUM_ART_SIZE};
 
 use crate::mp3tag::{Mp3Tag, parse_metadata};
 
@@ -14,6 +14,7 @@ struct MusicFolder {
     name: String,
     path: PathBuf,
     tag: Option<Mp3Tag>,
+    cover: Option<Vec<u8>>,
     files: Vec<PathBuf>,
 }
 
@@ -44,6 +45,11 @@ fn collect_aiff_files(start_folder: &Path) -> Vec<MusicFolder> {
                 current_folder.files.push(file_path.into());
             } else if file_name == "mp3tag.txt" {
                 current_folder.tag = Some(parse_metadata(file_path));
+            } else if file_name == "cover.jpg" || file_name == "cover.jpeg" {
+                let cover = fs::read(file_path).expect("Could not read the cover file.");
+                if cover.len() <= MAX_ALBUM_ART_SIZE {
+                    current_folder.cover = Some(cover);
+                }
             }
         } else if metadata.is_dir() {
             paths.append(&mut collect_aiff_files(&dir.path()));
@@ -83,28 +89,7 @@ fn get_samples(path: &Path) -> Vec<u16> {
     data
 }
 
-fn create_mp3_file(path: &Path, tag: &Option<Mp3Tag>, samples: Vec<u16>) {
-    let file_name = path.file_stem().expect("Invalid file_name");
-    let mut artist = String::new();
-    let mut album = String::new();
-    let mut year = String::new();
-
-    if let Some(t) = tag {
-        artist = t.artist.clone().or(Some("".into())).unwrap();
-        album = t.album.clone().or(Some("".into())).unwrap().to_string();
-        year = t.year.clone().or(Some("".into())).unwrap().to_string();
-    }
-    println!("  - artist: {}, album: {}, year: {}", artist, album, year);
-
-    let id3tag = Id3Tag {
-        title: file_name.as_bytes(),
-        artist: artist.as_bytes(),
-        album: album.as_bytes(),
-        album_art: &[],
-        year: year.as_bytes(),
-        comment: b"Created by aiff2mp3",
-    };
-
+fn create_mp3_file(path: &Path, tag: Id3Tag, samples: Vec<u16>) {
     println!("  - Buiding mp3_encoder");
     let mut mp3_encoder = Builder::new()
         .expect("Create LAME builder")
@@ -116,7 +101,7 @@ fn create_mp3_file(path: &Path, tag: &Option<Mp3Tag>, samples: Vec<u16>) {
         .expect("set brate")
         .with_quality(mp3lame_encoder::Quality::Best)
         .expect("set quality")
-        .with_id3_tag(id3tag)
+        .with_id3_tag(tag)
         .expect("set tags")
         .build()
         .expect("To initialize LAME encoder");
@@ -168,7 +153,32 @@ pub fn convert_aiff_file_on_path(path: &Path) {
             println!(" - Getting samples");
             let samples = get_samples(&file);
             println!(" - Creating MP3 file");
-            create_mp3_file(&file, &folder.tag, samples);
+
+            let file_name = path.file_stem().expect("Invalid file_name");
+            let mut artist = String::new();
+            let mut album = String::new();
+            let mut year = String::new();
+
+            if let Some(ref t) = folder.tag {
+                artist = t.artist.clone().or(Some("".into())).unwrap();
+                album = t.album.clone().or(Some("".into())).unwrap().to_string();
+                year = t.year.clone().or(Some("".into())).unwrap().to_string();
+            }
+            println!("  - artist: {}, album: {}, year: {}", artist, album, year);
+
+            let id3tag = Id3Tag {
+                title: file_name.as_bytes(),
+                artist: artist.as_bytes(),
+                album: album.as_bytes(),
+                album_art: folder
+                    .cover
+                    .as_ref()
+                    .expect("Could not pass cover to album_art - Max value was validated before"),
+                year: year.as_bytes(),
+                comment: b"Created by aiff2mp3",
+            };
+
+            create_mp3_file(&file, id3tag, samples);
         }
     }
 }

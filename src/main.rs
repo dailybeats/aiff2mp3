@@ -8,8 +8,10 @@ use crate::mp3tag::create_mp3tag_files;
 mod convert;
 mod mp3tag;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 fn usage() {
-    println!("Usage: aiff2mp3 [PATH_TO_THE_FOLDER] init|convert");
+    println!("Usage: aiff2mp3 [PATH_TO_THE_FOLDER] init|convert\nVersion: {VERSION}");
     exit(1);
 }
 
