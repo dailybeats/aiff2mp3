@@ -1,6 +1,8 @@
 /* Copyright (C) 2026 Tiago Duarte - All Rights Reserved */
-use std::path::Path;
+use std::path::PathBuf;
 use std::process::exit;
+
+use clap::{Parser, Subcommand};
 
 use crate::convert::convert_aiff_file_on_path;
 use crate::mp3tag::create_mp3tag_files;
@@ -8,55 +10,46 @@ use crate::mp3tag::create_mp3tag_files;
 mod convert;
 mod mp3tag;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+#[derive(Parser)]
+#[command(version)]
+struct Cli {
+    /// Path to the folder containing AIFF files
+    path: PathBuf,
 
-fn usage() {
-    println!("Usage: aiff2mp3 [PATH_TO_THE_FOLDER] init|convert\nVersion: {VERSION}");
-    exit(1);
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Create mp3tag.txt files recursively in all subfolders
+    Init,
+    /// Convert .aiff files to .mp3 in each subfolder's aiff2mp3/ directory
+    Convert,
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let _ = args.get(0).expect("Could not get the program name");
+    let cli = Cli::parse();
 
-    if args.len() != 3 {
-        println!("Invalid arguments");
-        usage();
+    if !cli.path.exists() {
+        eprintln!("{} does not exist...", cli.path.display());
+        exit(1);
     }
 
-    let arg_path = args.get(1);
-    if arg_path.is_none() {
-        println!("The folder with aiff files was not provided");
-        usage();
-    }
-
-    let path = Path::new(arg_path.expect("Already checked if it's none"));
-    if !path.exists() {
-        println!(
-            "{} does not exist...",
-            path.to_str().expect("Could not convert path to str")
-        );
-        usage();
-    }
-
-    match args.get(2) {
-        Some(option) => match option.as_str() {
-            "init" => {
-                println!(
-                    "Creating mp3tag.txt files on {} subfolders",
-                    path.to_str().expect("Could not convert path to str")
-                );
-                create_mp3tag_files(path)
-            }
-            "convert" => {
-                println!(
-                    "Converting aiff to mp3 on {} subfolders",
-                    path.to_str().expect("Could not convert path to str")
-                );
-                convert_aiff_file_on_path(path)
-            }
-            _ => usage(),
-        },
-        None => usage(),
+    match cli.command {
+        Commands::Init => {
+            println!(
+                "Creating mp3tag.txt files on {} subfolders",
+                cli.path.display()
+            );
+            create_mp3tag_files(&cli.path);
+        }
+        Commands::Convert => {
+            println!(
+                "Converting aiff to mp3 on {} subfolders",
+                cli.path.display()
+            );
+            convert_aiff_file_on_path(&cli.path);
+        }
     }
 }

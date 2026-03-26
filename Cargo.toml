@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 aifc = "0.6.0"
+clap = { version = "4.6.0", features = ["derive"] }
 mp3lame-encoder = "0.2.2"
