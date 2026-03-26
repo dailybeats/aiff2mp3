@@ -6,10 +6,12 @@ use clap::{Parser, Subcommand};
 
 use crate::convert::convert_aiff_file_on_path;
 use crate::fix_titles::fix_mp3_titles;
+use crate::fix_track_numbers::fix_track_numbers;
 use crate::mp3tag::create_mp3tag_files;
 
 mod convert;
 mod fix_titles;
+mod fix_track_numbers;
 mod mp3tag;
 
 #[derive(Parser)]
@@ -30,6 +32,8 @@ enum Commands {
     Convert,
     /// Fix ID3 title tags on existing MP3 files (sets title to the file name)
     FixTitles,
+    /// Parse leading track number from MP3 filenames and write it to the ID3 tag
+    FixTrackNumbers,
 }
 
 fn main() {
@@ -58,6 +62,10 @@ fn main() {
         Commands::FixTitles => {
             println!("Fixing MP3 titles under {}", cli.path.display());
             fix_mp3_titles(&cli.path);
+        }
+        Commands::FixTrackNumbers => {
+            println!("Fixing MP3 track numbers under {}", cli.path.display());
+            fix_track_numbers(&cli.path);
         }
     }
 }
