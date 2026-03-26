@@ -154,7 +154,7 @@ pub fn convert_aiff_file_on_path(path: &Path) {
             let samples = get_samples(&file);
             println!(" - Creating MP3 file");
 
-            let file_name = path.file_stem().expect("Invalid file_name");
+            let file_name = file.file_stem().expect("Invalid file_name");
             let mut artist = String::new();
             let mut album = String::new();
             let mut year = String::new();
